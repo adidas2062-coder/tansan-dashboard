@@ -20,6 +20,12 @@ fi
 git add index.html
 git -c user.name="jeonjuwon" -c user.email="adidas2062@gmail.com" \
     commit -q -m "대시보드 갱신 $(date '+%Y-%m-%d %H:%M')"
-git push -q origin main
 
-echo "배포 완료: https://adidas2062-coder.github.io/tansan-dashboard/"
+# 크론 환경에는 TTY·키체인이 없으므로 SSH 키로 인증한다.
+# 푸시가 실패해도 커밋은 남으므로 다음 실행에서 함께 올라간다.
+if git push -q origin main 2>&1; then
+    echo "[$(date '+%Y-%m-%d %H:%M')] 배포 완료: https://adidas2062-coder.github.io/tansan-dashboard/"
+else
+    echo "[$(date '+%Y-%m-%d %H:%M')] 푸시 실패 — 커밋은 로컬에 보관됨. SSH 키 등록 상태를 확인하세요."
+    exit 1
+fi
