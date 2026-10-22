@@ -1,0 +1,50 @@
+# 모든 PR에 대해 Muse가 리뷰하고 Jev가 머지 안전성을 판정한다.
+name: agent-pr-review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR 번호
+        required: true
+
+concurrency:
+  group: agent-review-${{ inputs.pr || github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+env:
+  PR: ${{ inputs.pr || github.event.pull_request.number }}
+
+jobs:
+  muse-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 .github/agents/llm_worker.py
+        env:
+          PROVIDER: muse
+          MODE: review
+          NUMBER: ${{ env.PR }}
+          GITHUB_TOKEN: ${{ github.token }}
+          META_API_KEY: ${{ secrets.META_API_KEY }}
+          MUSE_MODEL: ${{ vars.MUSE_MODEL }}
+
+  jev-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 .github/agents/jev_gate.py
+        env:
+          PR_NUMBER: ${{ env.PR }}
+          GITHUB_TOKEN: ${{ github.token }}
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+          JEV_MIN_CONFIDENCE: ${{ vars.JEV_MIN_CONFIDENCE }}
