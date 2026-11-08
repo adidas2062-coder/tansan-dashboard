@@ -1,0 +1,33 @@
+# Gemini·Muse 작업자: 이슈를 읽고 결과를 댓글로 남긴다(코드 변경 없음).
+name: agent-llm
+
+on:
+  workflow_call:
+    inputs:
+      provider:
+        type: string
+        required: true
+  issues:
+    types: [labeled]
+
+jobs:
+  run:
+    if: inputs.provider || github.event.label.name == 'agent:gemini' || github.event.label.name == 'agent:muse'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 .github/agents/llm_worker.py
+        env:
+          PROVIDER: ${{ inputs.provider || (github.event.label.name == 'agent:gemini' && 'gemini' || 'muse') }}
+          MODE: issue
+          NUMBER: ${{ github.event.issue.number }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          META_API_KEY: ${{ secrets.META_API_KEY }}
+          MUSE_MODEL: ${{ vars.MUSE_MODEL }}

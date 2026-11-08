@@ -1,0 +1,65 @@
+# 이슈에 `task` 라벨이 붙으면 Jev가 담당 AI를 고르고 해당 작업자를 실행한다.
+# Dots(또는 사람)가 `agent:<이름>` 라벨을 직접 붙이면 라우터를 거치지 않고 바로 작업자가 실행된다.
+name: agent-router
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  route:
+    if: github.event.label.name == 'task'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    outputs:
+      agent: ${{ steps.jev.outputs.agent }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: jev
+        run: python3 .github/agents/jev_route.py
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+          JEV_MIN_CONFIDENCE: ${{ vars.JEV_MIN_CONFIDENCE }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+
+  claude:
+    needs: route
+    if: needs.route.outputs.agent == 'claude'
+    uses: ./.github/workflows/agent-claude.yml
+    secrets: inherit
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: write
+    with:
+      routed: true
+
+  gemini:
+    needs: route
+    if: needs.route.outputs.agent == 'gemini'
+    uses: ./.github/workflows/agent-llm.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    with:
+      provider: gemini
+
+  muse:
+    needs: route
+    if: needs.route.outputs.agent == 'muse'
+    uses: ./.github/workflows/agent-llm.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    with:
+      provider: muse
+
+  # codex: 별도 실행 없음. `agent:codex` 라벨을 보고 Dots가 Codex 클라우드 작업을 만든다.

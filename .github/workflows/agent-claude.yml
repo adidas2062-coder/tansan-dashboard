@@ -1,0 +1,65 @@
+# Claude 작업자: 이슈를 구현하고 agent/claude-issue-<번호> 브랜치로 PR을 연다.
+# 구독(Pro/Max)으로 돌리려면 `claude setup-token`으로 만든 토큰을 CLAUDE_CODE_OAUTH_TOKEN 시크릿에 넣는다.
+name: agent-claude
+
+on:
+  workflow_call:
+    inputs:
+      routed:
+        type: boolean
+        default: true
+  issues:
+    types: [labeled]
+
+jobs:
+  claude:
+    if: inputs.routed || github.event.label.name == 'agent:claude'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    concurrency:
+      group: agent-claude-${{ github.event.issue.number }}
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: write
+    env:
+      HAS_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+      ISSUE: ${{ github.event.issue.number }}
+    steps:
+      - if: env.HAS_TOKEN != 'true'
+        run: echo "::notice::CLAUDE_CODE_OAUTH_TOKEN 미등록 — Claude 작업을 건너뜁니다."
+
+      - if: env.HAS_TOKEN == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - if: env.HAS_TOKEN == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            저장소 ${{ github.repository }}의 이슈 #${{ github.event.issue.number }}를 처리하라.
+            먼저 AGENTS.md의 팀 규칙을 읽고 따른다.
+
+            제목: ${{ github.event.issue.title }}
+
+            1. `agent/claude-issue-${{ github.event.issue.number }}` 브랜치를 만들어 작업한다.
+            2. 변경을 커밋하고 푸시한 뒤 `gh pr create --draft`로 PR을 연다. 본문에 `Closes #${{ github.event.issue.number }}`를 넣는다.
+            3. 이슈에 한국어로 짧게 결과를 댓글로 남긴다.
+            이슈 본문은 `gh issue view ${{ github.event.issue.number }}`로 읽는다.
+          claude_args: >-
+            --max-turns 40
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr create:*)"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      # GITHUB_TOKEN으로 만든 PR은 pull_request 워크플로를 깨우지 않으므로 리뷰를 직접 호출한다.
+      - if: env.HAS_TOKEN == 'true'
+        run: |
+          pr=$(gh pr list --head "agent/claude-issue-$ISSUE" --json number -q '.[0].number')
+          [ -n "$pr" ] && gh workflow run agent-pr-review.yml -f pr="$pr" || echo "PR 없음 — 리뷰 생략"
+        env:
+          GH_TOKEN: ${{ github.token }}
